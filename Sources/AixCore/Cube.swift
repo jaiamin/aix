@@ -6,9 +6,10 @@ public enum Cube {
     /// How many frames each dot stays dark as the wave passes.
     static let gap = 3
 
-    /// Bit for (row, col) inside one Braille character (col 0 or 1, row 0–2).
+    /// Bit for (row, col) inside one Braille character (col 0 or 1, row 0–2). Uses the cell's
+    /// bottom three dot rows: the top three sit above the text's baseline and look raised.
     static func bit(row: Int, col: Int) -> UInt32 {
-        [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20]][row][col]
+        [[0x02, 0x10], [0x04, 0x20], [0x40, 0x80]][row][col]
     }
 
     /// Whether a dot is lit. Dots on the same anti-diagonal share a phase, so a dark band

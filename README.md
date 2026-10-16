@@ -4,7 +4,7 @@ Turn a plain-English request into shell commands using Apple Intelligence. It ru
 
 ```
 $ aix find the 5 largest files here
-⠾⠇ Generating 1.8s
+⣴⡆ Generating 1.8s
 
   The command finds all regular files here and lists the five largest.
 

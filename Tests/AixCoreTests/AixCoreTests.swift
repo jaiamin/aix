@@ -133,8 +133,8 @@ import Testing
 
 @Suite struct CubeTests {
     @Test func fullGridIsTwoBrailleCells() {
-        // All nine dots lit: columns 0–1 fill ⠿, column 2 fills the left half of ⠇.
-        let lit = (0..<Cube.period).map(Cube.frame).filter { $0 == "⠿⠇" }
+        // All nine dots lit, in the bottom three rows: columns 0–1 fill ⣶, column 2 fills ⡆.
+        let lit = (0..<Cube.period).map(Cube.frame).filter { $0 == "⣶⡆" }
         #expect(!lit.isEmpty)
     }
 
