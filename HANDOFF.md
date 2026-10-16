@@ -1,7 +1,7 @@
 # Handoff
 
 ## Done
-- Swift package `aix` (macOS 26+): CLI, 3×3 cube spinner, confirm/run, pre-flight checks with automatic repair, fix-after-failure loop, deny list.
+- Swift package `aix` (macOS 26+): CLI, one-line 3×3 Braille cube spinner, confirm/run, pre-flight checks with automatic repair, fix-after-failure loop, deny list.
 - Unit tests for `AixCore` (options, safety, shell tokenizer, prompt).
 - Prompt tuned on the on-device model: worked examples, and commands generated before the explanation.
 

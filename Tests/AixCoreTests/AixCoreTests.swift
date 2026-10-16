@@ -130,3 +130,17 @@ import Testing
         #expect(Environment.runnableShell(from: nil) == "/bin/zsh")
     }
 }
+
+@Suite struct CubeTests {
+    @Test func fullGridIsTwoBrailleCells() {
+        // All nine dots lit: columns 0–1 fill ⠿, column 2 fills the left half of ⠇.
+        let lit = (0..<Cube.period).map(Cube.frame).filter { $0 == "⠿⠇" }
+        #expect(!lit.isEmpty)
+    }
+
+    @Test func everyFrameIsOneLineAndTheWaveMoves() {
+        let frames = (0..<Cube.period).map(Cube.frame)
+        #expect(frames.allSatisfy { $0.unicodeScalars.count == 2 && !$0.contains("\n") })
+        #expect(Set(frames).count > 3)
+    }
+}

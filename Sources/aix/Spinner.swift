@@ -1,11 +1,9 @@
+import AixCore
 import Foundation
 
-/// A 3×3 cube-grid loader drawn on stderr, three rows tall, with the label beside the middle row.
-/// A brightness wave sweeps diagonally across the grid.
+/// The one-line 3×3 cube loader (see `Cube`) with a label and elapsed time, drawn on stderr.
 enum Spinner {
-    static let interval = Duration.milliseconds(70)
-    // Dim → bright, 256-color greys ending in a cyan accent.
-    static let ramp = [238, 240, 243, 246, 250, 117, 81, 117, 250, 246, 243, 240]
+    static let interval = Duration.milliseconds(80)
 
     static func run<T>(_ label: String, _ work: () async throws -> T) async throws -> T {
         guard isatty(STDERR_FILENO) != 0 else { return try await work() }
@@ -14,7 +12,7 @@ enum Spinner {
             var frame = 0
             let start = ContinuousClock.now
             while !Task.isCancelled {
-                draw(frame: frame, label: label, elapsed: ContinuousClock.now - start, first: frame == 0)
+                draw(frame: frame, label: label, elapsed: ContinuousClock.now - start)
                 frame += 1
                 try? await Task.sleep(for: interval)
             }
@@ -34,26 +32,13 @@ enum Spinner {
         }
     }
 
-    static func draw(frame: Int, label: String, elapsed: Duration, first: Bool) {
-        var out = first ? "" : "\u{1b}[3A"
+    static func draw(frame: Int, label: String, elapsed: Duration) {
         let secs = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-        for row in 0..<3 {
-            out += "\r\u{1b}[2K "
-            for col in 0..<3 {
-                // Cells on the same anti-diagonal share a phase, so the light travels corner to corner.
-                let phase = (frame - (row + col) * 2) % ramp.count
-                out += "\u{1b}[38;5;\(ramp[(phase + ramp.count) % ramp.count])m■\u{1b}[0m "
-            }
-            if row == 1 {
-                out += " \u{1b}[1m\(label)\u{1b}[0m \u{1b}[2m\(String(format: "%.1fs", secs))\u{1b}[0m"
-            }
-            out += "\n"
-        }
-        Terminal.err(out)
+        Terminal.err("\r\u{1b}[2K\u{1b}[36m\(Cube.frame(frame))\u{1b}[0m \(label) \u{1b}[2m\(String(format: "%.1fs", secs))\u{1b}[0m")
     }
 
     static func clear() {
-        Terminal.err("\u{1b}[3A\r\u{1b}[J")
+        Terminal.err("\r\u{1b}[2K")
     }
 }
 
