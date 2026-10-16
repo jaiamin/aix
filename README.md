@@ -21,7 +21,7 @@ Requires an Apple silicon Mac on macOS 26+ with Apple Intelligence turned on.
 
 ```sh
 git clone https://github.com/OWNER/aix && cd aix
-make install            # builds and copies to /usr/local/bin (PREFIX=~/.local to change)
+make install            # builds and copies to ~/.local/bin (PREFIX=/usr/local to change)
 ```
 
 ## Usage
