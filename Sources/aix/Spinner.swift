@@ -1,9 +1,12 @@
 import AixCore
 import Foundation
 
-/// The one-line 3×3 cube loader (see `Cube`) with a label and elapsed time, drawn on stderr.
+/// A cycling star glyph with a highlight sweeping across the label, drawn on one line of stderr.
 enum Spinner {
-    static let interval = Duration.milliseconds(80)
+    static let interval = Duration.milliseconds(90)
+    // 256-color greys for the label: resting → fully lit.
+    static let dimGrey = 244
+    static let brightGrey = 255
 
     static func run<T>(_ label: String, _ work: () async throws -> T) async throws -> T {
         guard isatty(STDERR_FILENO) != 0 else { return try await work() }
@@ -34,7 +37,13 @@ enum Spinner {
 
     static func draw(frame: Int, label: String, elapsed: Duration) {
         let secs = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-        Terminal.err("\r\u{1b}[2K\u{1b}[36m\(Cube.frame(frame))\u{1b}[0m \(label) \u{1b}[2m\(String(format: "%.1fs", secs))\u{1b}[0m")
+        let levels = Animation.shimmer(count: label.count, frame: frame)
+        var text = ""
+        for (char, level) in zip(label, levels) {
+            let grey = dimGrey + Int((Double(brightGrey - dimGrey) * level).rounded())
+            text += "\u{1b}[38;5;\(grey)m\(char)"
+        }
+        Terminal.err("\r\u{1b}[2K\u{1b}[36m\(Animation.glyph(frame))\u{1b}[0m \(text)\u{1b}[0m \u{1b}[2m\(String(format: "%.1fs", secs))\u{1b}[0m")
     }
 
     static func clear() {

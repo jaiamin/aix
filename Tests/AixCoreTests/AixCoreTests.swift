@@ -131,16 +131,23 @@ import Testing
     }
 }
 
-@Suite struct CubeTests {
-    @Test func fullGridIsTwoBrailleCells() {
-        // All nine dots lit, in the bottom three rows: columns 0–1 fill ⣶, column 2 fills ⡆.
-        let lit = (0..<Cube.period).map(Cube.frame).filter { $0 == "⣶⡆" }
-        #expect(!lit.isEmpty)
+@Suite struct AnimationTests {
+    @Test func glyphsLoop() {
+        #expect(Animation.glyph(0) == "·")
+        #expect(Animation.glyph(Animation.glyphs.count) == Animation.glyph(0))
     }
 
-    @Test func everyFrameIsOneLineAndTheWaveMoves() {
-        let frames = (0..<Cube.period).map(Cube.frame)
-        #expect(frames.allSatisfy { $0.unicodeScalars.count == 2 && !$0.contains("\n") })
-        #expect(Set(frames).count > 3)
+    @Test func shimmerSweepsLeftToRight() {
+        let peak = { (frame: Int) in Animation.shimmer(count: 10, frame: frame).firstIndex(of: 1) }
+        #expect(peak(3) == 0)
+        #expect(peak(8) == 5)
+        #expect(peak(12) == 9)
+    }
+
+    @Test func shimmerRestsBetweenSweeps() {
+        // After the band leaves the right edge, every character is unlit for a while.
+        let resting = (0..<30).filter { Animation.shimmer(count: 10, frame: $0).allSatisfy { $0 == 0 } }
+        #expect(resting.count >= 3)
+        #expect(Animation.shimmer(count: 10, frame: 5).allSatisfy { (0...1).contains($0) })
     }
 }
