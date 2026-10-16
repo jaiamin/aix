@@ -29,16 +29,19 @@ func describe(_ error: Error) -> String {
     return "\(error)"
 }
 
+/// One blank line separates blocks; none trails the output, so the shell prompt follows
+/// with its own spacing.
 func show(_ plan: Plan) {
     print()
     print("  " + plan.explanation)
+    guard !plan.commands.isEmpty else { return }
     print()
     for command in plan.commands {
         let lines = command.split(separator: "\n", omittingEmptySubsequences: false)
         print("  " + Terminal.cyan("$") + " " + Terminal.bold(String(lines[0])))
         for line in lines.dropFirst() { print("    " + Terminal.bold(String(line))) }
     }
-    print()
+    print()  // before "Run?" or a warning
 }
 
 Terminal.installInterruptHandler()
