@@ -11,10 +11,36 @@ func fail(_ message: String, code: Int32 = 1) -> Never {
     exit(code)
 }
 
+/// Asks a yes/no question answered by a single keypress: y runs, anything else (Enter too) declines.
 func confirm(_ question: String) -> Bool {
     Terminal.err("\(question) \(Terminal.dim("[y/N]")) ")
-    guard let answer = readLine()?.trimmingCharacters(in: .whitespaces).lowercased() else { return false }
-    return answer == "y" || answer == "yes"
+    let key = readKey()
+    if key == 3 {  // Ctrl-C (signals are off while reading the key)
+        Terminal.err("\n")
+        exit(130)
+    }
+    let yes = key == UInt8(ascii: "y") || key == UInt8(ascii: "Y")
+    Terminal.err((yes ? "y" : "n") + "\n")
+    return yes
+}
+
+/// Reads one byte from the terminal without waiting for Enter or echoing it.
+func readKey() -> UInt8? {
+    var original = termios()
+    guard tcgetattr(STDIN_FILENO, &original) == 0 else {
+        return readLine()?.utf8.first
+    }
+    var raw = original
+    raw.c_lflag &= ~tcflag_t(ICANON | ECHO | ISIG)
+    withUnsafeMutableBytes(of: &raw.c_cc) { cc in
+        cc[Int(VMIN)] = 1
+        cc[Int(VTIME)] = 0
+    }
+    // TCSAFLUSH drops keys typed during generation, so an early "y" can't approve an unseen plan.
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw)
+    defer { tcsetattr(STDIN_FILENO, TCSANOW, &original) }
+    var byte: UInt8 = 0
+    return read(STDIN_FILENO, &byte, 1) == 1 ? byte : nil
 }
 
 func describe(_ error: Error) -> String {
