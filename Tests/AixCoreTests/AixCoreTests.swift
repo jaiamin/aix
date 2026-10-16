@@ -132,9 +132,10 @@ import Testing
 }
 
 @Suite struct AnimationTests {
-    @Test func glyphsLoop() {
-        #expect(Animation.glyph(0) == "·")
-        #expect(Animation.glyph(Animation.glyphs.count) == Animation.glyph(0))
+    @Test func glyphsCycleSquareCircleTriangle() {
+        let seen = (0..<12).map(Animation.glyph)
+        #expect(seen == ["■", "■", "■", "■", "●", "●", "●", "●", "▲", "▲", "▲", "▲"])
+        #expect(Animation.glyph(12) == "■")
     }
 
     @Test func shimmerSweepsLeftToRight() {

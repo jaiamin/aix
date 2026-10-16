@@ -1,11 +1,12 @@
-/// Frame math for the "Generating" indicator: a cycling star glyph and a highlight that sweeps
+/// Frame math for the "Generating" indicator: a cycling square/circle/triangle glyph and a highlight that sweeps
 /// across the label. Kept free of terminal I/O so it can be tested.
 public enum Animation {
-    /// Grows then shrinks, so the loop has no visible jump.
-    public static let glyphs: [Character] = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"]
+    public static let glyphs: [Character] = ["■", "●", "▲"]
+    /// Frames each shape stays on screen, so the cycle reads as shapes rather than flicker.
+    static let hold = 4
 
     public static func glyph(_ frame: Int) -> Character {
-        glyphs[frame % glyphs.count]
+        glyphs[(frame / hold) % glyphs.count]
     }
 
     /// Half-width of the highlight, in characters.

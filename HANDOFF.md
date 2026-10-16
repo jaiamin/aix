@@ -1,7 +1,7 @@
 # Handoff
 
 ## Done
-- Swift package `aix` (macOS 26+): CLI, star-glyph spinner with shimmering label, confirm/run, pre-flight checks with automatic repair, fix-after-failure loop, deny list.
+- Swift package `aix` (macOS 26+): CLI, ■ ● ▲ spinner with shimmering label, confirm/run, pre-flight checks with automatic repair, fix-after-failure loop, deny list.
 - Unit tests for `AixCore` (options, safety, shell tokenizer, prompt).
 - Prompt tuned on the on-device model: worked examples, and commands generated before the explanation.
 

@@ -1,7 +1,7 @@
 import AixCore
 import Foundation
 
-/// A cycling star glyph with a highlight sweeping across the label, drawn on one line of stderr.
+/// A cycling ■ ● ▲ glyph with a highlight sweeping across the label, drawn on one line of stderr.
 enum Spinner {
     static let interval = Duration.milliseconds(90)
     // 256-color greys for the label: resting → fully lit.
