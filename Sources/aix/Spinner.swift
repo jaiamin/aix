@@ -13,9 +13,8 @@ enum Spinner {
         Terminal.hideCursor()
         let animation = Task.detached {
             var frame = 0
-            let start = ContinuousClock.now
             while !Task.isCancelled {
-                draw(frame: frame, label: label, elapsed: ContinuousClock.now - start)
+                draw(frame: frame, label: label + "...")
                 frame += 1
                 try? await Task.sleep(for: interval)
             }
@@ -35,15 +34,14 @@ enum Spinner {
         }
     }
 
-    static func draw(frame: Int, label: String, elapsed: Duration) {
-        let secs = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+    static func draw(frame: Int, label: String) {
         let levels = Animation.shimmer(count: label.count, frame: frame)
         var text = ""
         for (char, level) in zip(label, levels) {
             let grey = dimGrey + Int((Double(brightGrey - dimGrey) * level).rounded())
             text += "\u{1b}[38;5;\(grey)m\(char)"
         }
-        Terminal.err("\r\u{1b}[2K\u{1b}[36m\(Animation.glyph(frame))\u{1b}[0m \(text)\u{1b}[0m \u{1b}[2m\(String(format: "%.1fs", secs))\u{1b}[0m")
+        Terminal.err("\r\u{1b}[2K\u{1b}[36m\(Animation.glyph(frame))\u{1b}[0m \(text)\u{1b}[0m")
     }
 
     static func clear() {
