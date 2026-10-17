@@ -2,11 +2,7 @@
 
 Describe what you want, get the shell command, run it with one key. Runs on Apple Intelligence, on your Mac.
 
-```
-$ aix find the 5 largest files here
-  $ find . -type f -exec du -k {} + | sort -rn | head -5
-Run? y/N · r refine · c copy
-```
+![aix demo](.github/demo.gif)
 
 ```sh
 brew install jaiamin/aix/aix

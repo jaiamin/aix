@@ -72,12 +72,15 @@ public enum Shell {
                 if i + 1 < chars.count { i += 1; word.append(chars[i]); inWord = true }
             case "$" where i + 1 < chars.count && chars[i + 1] == "(":
                 // Keep $( … ) inside the current word; programs inside it aren't checked.
+                word.append(c)
+                i += 1
                 var depth = 0
-                repeat {
+                while i < chars.count {
                     if chars[i] == "(" { depth += 1 } else if chars[i] == ")" { depth -= 1 }
                     word.append(chars[i])
                     i += 1
-                } while i < chars.count && depth > 0
+                    if depth == 0 { break }
+                }
                 inWord = true
                 continue
             case "`":

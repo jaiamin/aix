@@ -104,6 +104,12 @@ import Testing
         #expect(Shell.programs(in: "$EDITOR file") == [])
     }
 
+    @Test func arithmeticIsNotAProgram() {
+        #expect(Shell.programs(in: "caffeinate -d -t $((45*60))") == ["caffeinate"])
+        #expect(Shell.programs(in: "echo $((1+2)) && ls") == ["echo", "ls"])
+        #expect(Shell.programs(in: "cd $(git rev-parse --show-toplevel) && ls") == ["cd", "ls"])
+    }
+
     @Test func handlesSubshellsAndKeywords() {
         #expect(Shell.programs(in: "(cd x && ls)") == ["cd", "ls"])
         #expect(Shell.programs(in: "for f in *.txt; do wc -l \"$f\"; done") == ["wc"])
@@ -270,5 +276,27 @@ import Testing
 
     @Test func passesInput() {
         #expect(capture(["/usr/bin/wc", "-l"], input: "a\nb\n").stdout.trimmingCharacters(in: .whitespaces) == "2\n")
+    }
+}
+
+/// Guards the example library, since the model copies examples closely.
+@Suite struct ExampleLibraryTests {
+    @Test func everyExampleParses() {
+        for example in library where !example.commands.isEmpty {
+            let script = example.commands.joined(separator: "\n")
+            #expect(capture(["/bin/zsh", "-n", "-c", script]).status == 0, "\(example.request): \(script)")
+        }
+    }
+
+    @Test func examplesOnlyUseProgramsFromMacOS() {
+        let programs = Set(library.flatMap { $0.commands.flatMap(Shell.programs(in:)) })
+        let optional = Set(Environment.knownTools)  // the prompt only offers these when installed
+        let missing = programs.subtracting(installed(Array(programs), shell: "/bin/zsh")).subtracting(optional)
+        #expect(missing.isEmpty, "not on macOS: \(missing.sorted())")
+    }
+
+    @Test func examplesHaveNoBackslashes() {
+        // The model must escape them in its JSON output and often derails.
+        for example in library { #expect(!example.commands.joined().contains("\\"), "\(example.request)") }
     }
 }
