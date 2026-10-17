@@ -1,51 +1,89 @@
 import AixCore
 import Foundation
 
-/// "■ Generating..." with a highlight sweeping across the text.
-enum Spinner {
-    static let interval = Duration.milliseconds(90)
-    static let dimGrey = 244
-    static let brightGrey = 255
+/// Shows "■ Generating..." until the plan starts arriving, then the plan itself, redrawn as it
+/// grows. Drawn on stderr and cleared at the end, so the final output prints normally.
+final class Live: @unchecked Sendable {
+    private let label: String
+    private let enabled = isatty(STDERR_FILENO) != 0
+    private let lock = NSLock()
+    private var rows = 0
+    private var spinning = true
+    private var animation: Task<Void, Never>?
 
-    @MainActor
-    static func run<T>(_ label: String, _ work: () async throws -> T) async throws -> T {
-        guard isatty(STDERR_FILENO) != 0 else { return try await work() }
+    init(_ label: String) { self.label = label + "..." }
+
+    func start() {
+        guard enabled else { return }
         Terminal.hideCursor()
-        let animation = Task.detached {
+        animation = Task.detached { [self] in
             var frame = 0
             while !Task.isCancelled {
-                draw(frame: frame, label: label + "...")
+                lock.withLock { if spinning { replace(with: [Self.spinner(label, frame: frame)]) } }
                 frame += 1
-                try? await Task.sleep(for: interval)
+                try? await Task.sleep(for: .milliseconds(90))
             }
-        }
-        defer { Terminal.showCursor() }
-        do {
-            let value = try await work()
-            animation.cancel()
-            await animation.value
-            clear()
-            return value
-        } catch {
-            animation.cancel()
-            await animation.value
-            clear()
-            throw error
         }
     }
 
-    static func draw(frame: Int, label: String) {
+    /// Shows the plan so far; the spinner stays until there's something to show.
+    func show(_ lines: [String]) {
+        guard enabled, lines.contains(where: { !$0.isEmpty }) else { return }
+        lock.withLock {
+            spinning = false
+            replace(with: lines)
+        }
+    }
+
+    /// Back to the spinner, when a retry starts over.
+    func reset() {
+        guard enabled else { return }
+        lock.withLock { spinning = true }
+    }
+
+    func finish() {
+        guard enabled else { return }
+        animation?.cancel()
+        lock.withLock {
+            spinning = false
+            replace(with: [])
+        }
+        Terminal.showCursor()
+    }
+
+    /// Erases what was drawn and draws `lines`, counting rows that wrap. Call with the lock held.
+    private func replace(with lines: [String]) {
+        var out = rows > 0 ? "\u{1b}[\(rows)A" : ""
+        out += "\r\u{1b}[J"
+        var size = winsize()
+        let columns = ioctl(STDERR_FILENO, TIOCGWINSZ, &size) == 0 && size.ws_col > 0 ? Int(size.ws_col) : 80
+        rows = 0
+        for line in lines {
+            out += line + "\n"
+            let width = line.replacing(/\u{1b}\[[0-9;?]*[A-Za-z]/, with: "").count
+            rows += max(1, (width + columns - 1) / columns)
+        }
+        FileHandle.standardError.write(Data(out.utf8))
+    }
+
+    static func spinner(_ label: String, frame: Int) -> String {
         let levels = Animation.shimmer(count: label.count, frame: frame)
         var text = ""
         for (char, level) in zip(label, levels) {
-            let grey = dimGrey + Int((Double(brightGrey - dimGrey) * level).rounded())
-            text += "\u{1b}[38;5;\(grey)m\(char)"
+            text += "\u{1b}[38;5;\(244 + Int((11 * level).rounded()))m\(char)"
         }
-        Terminal.err("\r\u{1b}[2K\u{1b}[36m\(Animation.glyph(frame))\u{1b}[0m \(text)\u{1b}[0m")
+        return "\u{1b}[36m\(Animation.glyph(frame))\u{1b}[0m \(text)\u{1b}[0m"
     }
+}
 
-    static func clear() {
-        Terminal.err("\r\u{1b}[2K")
+enum Spinner {
+    /// "■ Label..." while `work` runs.
+    @MainActor
+    static func run<T>(_ label: String, _ work: () async throws -> T) async throws -> T {
+        let live = Live(label)
+        live.start()
+        defer { live.finish() }
+        return try await work()
     }
 }
 
@@ -69,6 +107,23 @@ enum Terminal {
         isColor ? "\u{1b}[\(code)m\(s)\u{1b}[0m" : s
     }
     static func dim(_ s: String) -> String { style(s, "2") }
+
+    /// The plan as printed: a blank line, the explanation, a blank line, then the commands.
+    /// Shared by the live view and the final output so they look identical.
+    static func planLines(explanation: String?, commands: [String]) -> [String] {
+        var lines = [""]
+        if let explanation, !explanation.isEmpty {
+            lines.append("  " + explanation)
+            if !commands.isEmpty { lines.append("") }
+        }
+        for command in commands where !command.isEmpty {
+            let parts = command.split(separator: "\n", omittingEmptySubsequences: false)
+            lines.append("  " + cyan("$") + " " + bold(String(parts[0])))
+            lines += parts.dropFirst().map { "    " + bold(String($0)) }
+        }
+        if !commands.isEmpty { lines.append("") }
+        return lines
+    }
     static func bold(_ s: String) -> String { style(s, "1") }
     static func red(_ s: String) -> String { style(s, "31") }
     static func yellow(_ s: String) -> String { style(s, "33") }
