@@ -2,7 +2,7 @@ import AixCore
 import Foundation
 import FoundationModels
 
-let version = "0.1.0"
+let version = "0.2.0"
 let maxRepairs = 2  // automatic retries when a plan has syntax errors or missing programs
 
 func fail(_ message: String, code: Int32 = 1) -> Never {
@@ -60,20 +60,51 @@ do {
 }
 if opts.version { print("aix \(version)"); exit(0) }
 if opts.help { print(Options.usage); exit(0) }
-
-let interactive = isatty(STDIN_FILENO) != 0
-var request = opts.prompt
-if request.isEmpty {
-    guard interactive else { print(Options.usage); exit(2) }
-    guard let line = Terminal.ask(Terminal.cyan("aix › ")), !line.isEmpty else { exit(0) }
-    request = line
+if case .initShell(let shell) = opts.mode {
+    guard shell == "zsh" else { fail("only zsh is supported for now") }
+    print(ShellIntegration.zsh)
+    exit(0)
 }
 
-let shell = Environment.runnableShell(from: ProcessInfo.processInfo.environment["SHELL"])
+let env = ProcessInfo.processInfo.environment
+let interactive = isatty(STDIN_FILENO) != 0 && !opts.print
+var request = opts.prompt  // what gets saved to history; empty for fix and explain
+var message = ""
+switch opts.mode {
+case .run:
+    if request.isEmpty {
+        guard interactive else { print(Options.usage); exit(2) }
+        guard let line = Terminal.ask(Terminal.cyan("aix › ")), !line.isEmpty else { exit(0) }
+        request = line
+    }
+    message = Prompt.request(request)
+case .fix:
+    guard let command = env["AIX_LAST_COMMAND"]?.trimmingCharacters(in: .whitespaces), !command.isEmpty,
+          let status = env["AIX_LAST_STATUS"].flatMap(Int32.init) else {
+        fail("aix fix needs shell integration. Add this to ~/.zshrc:\n  eval \"$(aix init zsh)\"")
+    }
+    guard status != 0 else {
+        print("Your last command worked: \(command)")
+        exit(0)
+    }
+    message = Prompt.fix(command: command, status: status)
+case .explain(let command):
+    message = Prompt.explain(command)
+case .initShell:
+    break
+}
+
+let shell = Environment.runnableShell(from: env["SHELL"])
 let environment = Environment.current(shell: shell)
 let runner = Runner(shell: shell)
+let history = History.standard(env: env)
 
-let instructions = Prompt.instructions(for: environment, request: request)
+let instructions: String
+if case .explain = opts.mode {
+    instructions = Prompt.explainInstructions
+} else {
+    instructions = Prompt.instructions(for: environment, request: request, personal: history.load())
+}
 debug(instructions)
 
 let planner: Planner
@@ -83,8 +114,18 @@ do {
     fail(describe(error))
 }
 
-var message = Prompt.request(request)
-var label = "Generating"
+if case .explain = opts.mode {
+    do {
+        let text = try await Spinner.run("Explaining") { try await planner.explain(message) }
+        print()
+        for line in text.split(separator: "\n") { print("  " + line) }
+        exit(0)
+    } catch {
+        fail(describe(error))
+    }
+}
+
+var label = opts.mode == .fix ? "Fixing" : "Generating"
 
 while true {
     var plan: Plan
@@ -104,15 +145,29 @@ while true {
         fail(describe(error))
     }
 
-    show(plan)
-    if plan.commands.isEmpty { exit(1) }
+    let blocked = Safety.violation(in: plan.script, home: environment.home)
+    let risks = Safety.risks(in: plan.script)
 
-    if let reason = Safety.violation(in: plan.script, home: environment.home) {
-        Terminal.err(Terminal.red("✗ Blocked: this \(reason). aix won't run it.") + "\n")
+    // Shell integration: the command goes to stdout for the prompt line, notes to stderr.
+    if opts.print {
+        var notes = [plan.explanation ?? ""]
+        if let blocked { notes = ["✗ Blocked: this \(blocked)."] }
+        if !risks.isEmpty { notes.append("⚠ This " + risks.joined(separator: ", ") + ".") }
+        notes += issues.map { "⚠ " + $0 }
+        Terminal.err(notes.filter { !$0.isEmpty }.joined(separator: "\n"))
+        guard blocked == nil, !plan.commands.isEmpty else { exit(1) }
+        print(plan.commands.joined(separator: " && "))
+        exit(0)
+    }
+
+    show(plan)
+    if plan.commands.isEmpty { exit(0) }  // an answer, or a refusal with its reason
+
+    if let blocked {
+        Terminal.err(Terminal.red("✗ Blocked: this \(blocked). aix won't run it.") + "\n")
         exit(1)
     }
     for issue in issues { Terminal.err(Terminal.yellow("⚠ \(issue)") + "\n") }
-    let risks = Safety.risks(in: plan.script)
     if !risks.isEmpty { Terminal.err(Terminal.yellow("⚠ This " + risks.joined(separator: ", ") + ".") + "\n") }
     if opts.dryRun { exit(0) }
 
@@ -138,7 +193,10 @@ while true {
     }
 
     let result = runner.run(plan.script)
-    if result.status == 0 { exit(0) }
+    if result.status == 0 {
+        if !request.isEmpty { history.record(.init(request: request, commands: plan.commands)) }
+        exit(0)
+    }
 
     Terminal.err(Terminal.red("✗ Exited with status \(result.status)") + "\n")
     guard interactive, Terminal.choose("Ask aix to fix it?", hint: "y/N", keys: "y") == "y" else {

@@ -2,14 +2,23 @@ import AixCore
 import FoundationModels
 
 @Generable
+enum Kind {
+    case runOnThisMac, explainConcept
+}
+
+@Generable
 struct Plan {
+    // Decided first, so a question can never come back with something to run.
+    @Guide(description: "runOnThisMac: do something, or find out something about this Mac or its files (my ip, RAM, time, how do I…). explainConcept: only for what a term, option or symbol means.")
+    var kind: Kind
+
     // Commands come first (explanation-first made the model refuse doable requests), and are
     // capped so it doesn't append steps nobody asked for.
     @Guide(description: "Shell commands to run in order, usually just one. No markdown. Empty only if the request should be refused.", .maximumCount(3))
     var commands: [String]
 
     // Optional so derailed output (see Prompt.clean) still yields commands.
-    @Guide(description: "One short sentence saying what the commands do, or why there are none.")
+    @Guide(description: "One or two sentences: what the commands do, the answer to the user's question, or why there are no commands.")
     var explanation: String?
 
     var script: String { commands.isEmpty ? "" : "set -e\n" + commands.joined(separator: "\n") }
@@ -56,8 +65,15 @@ final class Planner {
                 throw PlannerError(description: "Couldn't produce a usable plan. Try rewording the request.")
             }
         }
-        plan.commands = plan.commands.map(Prompt.clean).filter { !$0.isEmpty }
+        plan.commands = plan.kind == .explainConcept ? [] : plan.commands.map(Prompt.clean).filter { !$0.isEmpty }
         return plan
+    }
+
+    /// A plain-text answer, for `aix explain`.
+    func explain(_ prompt: String) async throws -> String {
+        let text = try await session.respond(to: prompt, options: GenerationOptions(maximumResponseTokens: 250)).content
+        return text.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // Xcode 27 renamed `sampling:` to `samplingMode:`; support building with either.

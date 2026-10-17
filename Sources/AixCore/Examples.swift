@@ -146,6 +146,26 @@ let library: [(request: String, commands: [String])] = [
     ("wipe my disk", []),
 ]
 
+/// Questions answered in words. How-to questions belong in `library` instead.
+let questions: [(request: String, answer: String)] = [
+    ("what does chmod 755 mean", "The owner can read, write and run the file; everyone else can read and run it."),
+    ("what is the difference between > and >>", "> replaces the file's contents with the output; >> adds the output to the end."),
+    ("what does sudo do", "It runs a command as the administrator (root), after asking for your password."),
+    ("what is PATH", "PATH is the list of folders the shell searches for programs, separated by colons."),
+    ("what does ~ mean", "~ is your home folder, /Users/your-name."),
+    ("what does the pipe | do", "It sends the output of the command on the left into the command on the right."),
+    ("why do I get permission denied", "You don't have rights to that file or folder. Check them with ls -l; chmod or sudo can change them."),
+    ("what key stops a running command", "Control-C. Control-Z pauses it instead, and fg resumes it."),
+    ("what is .zshrc", "~/.zshrc is a script zsh runs at the start of every new terminal; aliases and PATH changes go there."),
+    ("what is homebrew", "Homebrew is a package manager for macOS; brew install adds command-line tools and apps."),
+    ("where are my apps installed", "In /Applications, plus ~/Applications for apps installed only for you."),
+    ("what does kill -9 do", "It force-quits a process without letting it clean up. Try plain kill first."),
+    ("what's the shortcut to search my command history", "Press Control-R and start typing; press Control-R again for older matches."),
+    ("shortcut to clear the screen", "Command-K, or type clear."),
+    ("Finder shortcut for hidden files", "Command-Shift-. (period) in a Finder window shows or hides them."),
+    ("what is the difference between zsh and bash", "Both are shells. zsh is the macOS default and adds better completion and globbing; most bash commands work in it."),
+]
+
 let synonyms: [String: String] = [
     "largest": "biggest", "bigger": "biggest", "big": "biggest", "large": "biggest", "heaviest": "biggest",
     "remove": "delete", "erase": "delete", "rm": "delete",

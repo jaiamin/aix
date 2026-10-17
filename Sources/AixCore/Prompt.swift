@@ -68,7 +68,7 @@ public struct Environment: Sendable {
 public enum Prompt {
     static let maxEntries = 60
 
-    public static func instructions(for env: Environment, request: String = "") -> String {
+    public static func instructions(for env: Environment, request: String = "", personal: [History.Entry] = []) -> String {
         let shown = env.entries.prefix(maxEntries).map { $0.contains(" ") ? "\"\($0)\"" : $0 }.joined(separator: "  ")
         let more = env.entries.count > maxEntries ? "  (+\(env.entries.count - maxEntries) more)" : ""
         let name = (env.cwd as NSString).lastPathComponent
@@ -94,10 +94,11 @@ public enum Prompt {
         - Use an extra tool only if it is listed as installed.
         - Usually one command. Stop when the request is done: no extra echo, cleanup, push or delete steps. Quote names that may contain spaces.
         - NEVER use sudo. Delete, move, kill or overwrite only what the user named.
-        - Return no commands only if the request would wreck the system or the user's data, or isn't a computer task. Say why.
+        - Only when the user asks what a term, option or symbol means is the kind explainConcept: answer in the explanation in 1-3 sentences, with no commands. "How do I…", and anything about this Mac or its files ("what's my ip", "how much RAM"), is runOnThisMac.
+        - Return no commands, and say why, if the request would wreck the system or the user's data, or has nothing to do with computers.
 
         EXAMPLES (from other Macs; take names and numbers from the request and the file list, never from these)
-        \(examples(for: request))
+        \(examples(for: request, personal: personal))
         """
     }
 
@@ -112,21 +113,58 @@ public enum Prompt {
         }.map { synonyms[$0] ?? $0 }.filter { !stopWords.contains($0) })
     }
 
-    /// The examples sharing the most words with the request, plus the refusal.
-    static func examples(for request: String, count: Int = 10) -> String {
+    struct Example {
+        var request: String
+        var commands: [String]
+        var answer: String?
+        var personal = false
+
+        var text: String {
+            let list = commands.isEmpty ? "  (none)" : commands.map { "  " + $0 }.joined(separator: "\n")
+            let kind = answer != nil && commands.isEmpty && request != library.last!.request ? "explainConcept" : "runOnThisMac"
+            return "Request: \(request)\nKind: \(kind)\nCommands:\n\(list)" + (answer.map { "\nExplanation: \($0)" } ?? "")
+        }
+    }
+
+    /// The examples sharing the most words with the request, plus the refusal. The user's own
+    /// past requests win ties, but only when they're related at all.
+    static func examples(for request: String, personal: [History.Entry] = [], count: Int = 10) -> String {
         let wanted = words(request)
-        let ranked = library.enumerated()
-            .filter { !$0.element.commands.isEmpty }
+        let pool = personal.reversed().map { Example(request: $0.request, commands: $0.commands, personal: true) }
+            + library.filter { !$0.commands.isEmpty }.map { Example(request: $0.request, commands: $0.commands) }
+            + questions.map { Example(request: $0.request, commands: [], answer: $0.answer) }
+        let ranked = pool.enumerated()
             .map { (index: $0.offset, example: $0.element, score: words($0.element.request).intersection(wanted).count) }
-            .sorted { $0.score != $1.score ? $0.score > $1.score : $0.index < $1.index }
-        let picked = ranked.prefix(count).sorted { $0.index < $1.index }.map(\.example) + [library.last!]
-        return picked.map { ex in
-            "Request: \(ex.request)\nCommands:\n" + (ex.commands.isEmpty ? "  (none; the explanation says why)" : ex.commands.map { "  " + $0 }.joined(separator: "\n"))
-        }.joined(separator: "\n\n")
+            .filter { !$0.example.personal || $0.score > 0 }
+            .sorted { ($0.score, $0.example.personal ? 1 : 0, -$0.index) > ($1.score, $1.example.personal ? 1 : 0, -$1.index) }
+        let refusal = Example(request: library.last!.request, commands: [], answer: "That would erase everything, so aix won't do it.")
+        return (ranked.prefix(count).sorted { $0.index < $1.index }.map(\.example) + [refusal])
+            .map(\.text).joined(separator: "\n\n")
     }
 
     public static func request(_ text: String) -> String {
         "Request: \(text)"
+    }
+
+    public static func fix(command: String, status: Int32) -> String {
+        """
+        This command failed with exit status \(status) (its error output isn't available):
+          \(command)
+        Return the corrected command. Keep what it was trying to do and change as little as possible. \
+        Usual causes: a typo in a command or subcommand, a GNU/Linux-only option, a missing argument.
+        Examples: "git comit -m x" -> "git commit -m x"; "du --max-depth=1" -> "du -d 1"; \
+        "sl" -> "ls"; "grep foo" (no file) -> "grep -r foo ."
+        """
+    }
+
+    public static let explainInstructions = """
+        You explain macOS shell commands to someone at the terminal. Plain text, no markdown. \
+        First one sentence on what the whole command does, then one short line per important part, \
+        like "-x  extract files". At most 6 lines. Mention it if the command deletes or overwrites anything.
+        """
+
+    public static func explain(_ command: String) -> String {
+        "Explain: \(command)"
     }
 
     public static func refine(_ change: String) -> String {

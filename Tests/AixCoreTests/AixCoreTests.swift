@@ -26,6 +26,24 @@ import Testing
         #expect(o.prompt.isEmpty && !o.help)
     }
 
+    @Test func subcommands() throws {
+        #expect(try Options.parse(["fix"]).mode == .fix)
+        #expect(try Options.parse(["init", "zsh"]).mode == .initShell("zsh"))
+        #expect(try Options.parse(["init"]).mode == .initShell("zsh"))
+        #expect(try Options.parse(["explain", "tar", "-xzf", "a.tgz"]).mode == .explain("tar -xzf a.tgz"))
+    }
+
+    @Test func subcommandWordsInsideRequestsStayRequests() throws {
+        #expect(try Options.parse(["fix", "the", "permissions"]).mode == .run)
+        #expect(try Options.parse(["init", "a", "git", "repo"]).mode == .run)
+        #expect(try Options.parse(["--", "fix"]).mode == .run)
+    }
+
+    @Test func printFlag() throws {
+        let o = try Options.parse(["--print", "list", "files"])
+        #expect(o.print && o.prompt == "list files")
+    }
+
     @Test func rejectsUnknownFlags() {
         #expect(throws: OptionsError.unknownFlag("--bogus")) { try Options.parse(["--bogus", "x"]) }
     }
@@ -190,6 +208,19 @@ import Testing
         #expect(text.contains("wipe my disk"))
     }
 
+    @Test func includesQuestionsWithAnswers() {
+        let text = Prompt.examples(for: "what does chmod 755 mean", count: 2)
+        #expect(text.contains("Explanation: The owner can read"))
+    }
+
+    @Test func prefersRelatedPersonalHistory() {
+        let mine = [History.Entry(request: "deploy the site", commands: ["make deploy"]),
+                    History.Entry(request: "battery level", commands: ["pmset -g batt | tail -1"])]
+        let text = Prompt.examples(for: "show battery level", personal: mine, count: 1)
+        #expect(text.contains("pmset -g batt | tail -1"))
+        #expect(!text.contains("make deploy"))
+    }
+
     @Test func pluralsMatchSingulars() {
         #expect(Prompt.words("Commits processes") == Prompt.words("commit process"))
     }
@@ -206,5 +237,27 @@ import Testing
 
         #expect(Environment.tree(root, depth: 2) == [".git/", "a/", "a/b/", "a/file.txt", "node_modules/"])
         #expect(Environment.tree(root, depth: 1) == [".git/", "a/", "node_modules/"])
+    }
+}
+
+@Suite struct HistoryTests {
+    @Test func keepsNewestAndReplacesRepeats() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("aix-history-\(UUID().uuidString)/h.json")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let h = History(url: url)
+        #expect(h.load().isEmpty)
+        h.record(.init(request: "list files", commands: ["ls"]))
+        h.record(.init(request: "disk space", commands: ["df -h /"]))
+        h.record(.init(request: "List files", commands: ["ls -la"]))
+        #expect(h.load() == [.init(request: "disk space", commands: ["df -h /"]), .init(request: "List files", commands: ["ls -la"])])
+    }
+}
+
+@Suite struct ShellIntegrationTests {
+    @Test func zshScriptParses() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("aix-\(UUID().uuidString).zsh")
+        try ShellIntegration.zsh.write(to: file, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: file) }
+        #expect(capture(["/bin/zsh", "-n", file.path]).status == 0)
     }
 }
