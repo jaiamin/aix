@@ -2,7 +2,7 @@ import AixCore
 import Foundation
 import FoundationModels
 
-let version = "0.2.1"
+let version = "0.2.2"
 let maxRepairs = 2  // automatic retries when a plan has syntax errors or missing programs
 
 func fail(_ message: String, code: Int32 = 1) -> Never {
@@ -64,7 +64,7 @@ let opts: Options
 do {
     opts = try Options.parse(Array(CommandLine.arguments.dropFirst()))
 } catch {
-    fail("\(error)\n\n\(Options.usage)", code: 2)
+    fail("\(error). Run aix -h for help.", code: 2)
 }
 if opts.version { print("aix \(version)"); exit(0) }
 if opts.help { print(Options.usage); exit(0) }
@@ -89,7 +89,7 @@ case .run:
 case .fix:
     guard let command = env["AIX_LAST_COMMAND"]?.trimmingCharacters(in: .whitespaces), !command.isEmpty,
           let status = env["AIX_LAST_STATUS"].flatMap(Int32.init) else {
-        fail("aix fix needs shell integration. Add this to ~/.zshrc:\n  eval \"$(aix init zsh)\"")
+        fail("shell integration is needed for fix. Add this to ~/.zshrc:\n  eval \"$(aix init zsh)\"")
     }
     guard status != 0 else {
         print("Your last command worked: \(command)")
