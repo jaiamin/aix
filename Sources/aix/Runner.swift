@@ -14,11 +14,9 @@ struct Runner {
             found.append("syntax error: \(msg.isEmpty ? "exit \(syntax.status)" : msg)")
         }
         let programs = Array(Set(Shell.programs(in: script))).sorted()
-        if !programs.isEmpty {
-            let probe = capture([shell, "-c", #"for c; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done"#, "aix"] + programs)
-            for name in probe.stdout.split(separator: "\n") {
-                found.append("`\(name)`: command not found (not installed on this Mac)")
-            }
+        let present = installed(programs, shell: shell)
+        for name in programs where !present.contains(name) {
+            found.append("`\(name)`: command not found (not installed on this Mac)")
         }
         return found
     }
@@ -37,6 +35,7 @@ struct Runner {
             FileHandle.standardError.write(data)
             buffer.append(data)
         }
+        fflush(stdout)  // print the plan before the command's own output
         do {
             try p.run()
         } catch {

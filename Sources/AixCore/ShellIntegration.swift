@@ -1,5 +1,5 @@
 /// What `aix init zsh` prints: Ctrl-G turns the text on the prompt into a command,
-/// and a precmd hook remembers the last command for `aix fix`.
+/// and the last command is passed to aix (only) for `aix fix`.
 public enum ShellIntegration {
     public static let zsh = #"""
     # aix shell integration: eval "$(aix init zsh)"
@@ -20,9 +20,14 @@ public enum ShellIntegration {
     zle -N _aix_widget
     bindkey '^G' _aix_widget
 
+    # Remember the last command without exporting it; only aix gets it, for `aix fix`.
     _aix_precmd() {
-      export AIX_LAST_STATUS=$? AIX_LAST_COMMAND="$(fc -ln -1 2>/dev/null)"
+      _aix_last_status=$?
+      _aix_last_command=$(fc -ln -1 2>/dev/null)
     }
     precmd_functions=(_aix_precmd ${precmd_functions[@]})
+    aix() {
+      AIX_LAST_STATUS=$_aix_last_status AIX_LAST_COMMAND=$_aix_last_command command aix "$@"
+    }
     """#
 }

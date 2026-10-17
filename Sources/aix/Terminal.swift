@@ -7,6 +7,7 @@ enum Spinner {
     static let dimGrey = 244
     static let brightGrey = 255
 
+    @MainActor
     static func run<T>(_ label: String, _ work: () async throws -> T) async throws -> T {
         guard isatty(STDERR_FILENO) != 0 else { return try await work() }
         Terminal.hideCursor()
