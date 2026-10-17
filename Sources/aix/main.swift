@@ -2,7 +2,7 @@ import AixCore
 import Foundation
 import FoundationModels
 
-let version = "0.3.1"
+let version = "0.3.2"
 let maxRepairs = 2  // automatic retries when a plan has syntax errors or missing programs
 
 func fail(_ message: String, code: Int32 = 1) -> Never {
