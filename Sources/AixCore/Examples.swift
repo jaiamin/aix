@@ -150,6 +150,7 @@ let library: [(request: String, commands: [String])] = [
 let questions: [(request: String, answer: String)] = [
     ("what does chmod 755 mean", "The owner can read, write and run the file; everyone else can read and run it."),
     ("what is the difference between > and >>", "> replaces the file's contents with the output; >> adds the output to the end."),
+    ("what does 2>/dev/null do", "It hides error messages by sending them to /dev/null; normal output still shows."),
     ("what does sudo do", "It runs a command as the administrator (root), after asking for your password."),
     ("what is PATH", "PATH is the list of folders the shell searches for programs, separated by colons."),
     ("what does ~ mean", "~ is your home folder, /Users/your-name."),

@@ -29,7 +29,8 @@ public enum Safety {
             case "mv": add("moves " + names(operands.dropLast(), or: "files"))
             case "rm", "rmdir", "shred", "unlink": add("deletes " + names(operands, or: "files"))
             case "find" where args.contains("-delete") || args.contains("rm"):
-                add("deletes files under " + names(args.prefix { !$0.hasPrefix("-") }, or: "."))
+                let roots = args.prefix { !$0.hasPrefix("-") }.filter { $0 != "." && $0 != "./" }
+                add(roots.isEmpty ? "deletes matching files in this folder" : "deletes matching files under " + names(roots, or: "."))
             case "sed" where args.contains { $0.hasPrefix("-i") }: add("edits files in place")
             case "kill", "killall", "pkill": add("stops processes")
             case "xargs" where args.contains { ["kill", "rm", "mv"].contains($0) }:

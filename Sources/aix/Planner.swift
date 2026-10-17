@@ -18,7 +18,7 @@ struct Plan {
     var commands: [String]
 
     // Optional so derailed output (see Prompt.clean) still yields commands.
-    @Guide(description: "One or two sentences: what the commands do, the answer to the user's question, or why there are no commands.")
+    @Guide(description: "For commands: one short sentence starting with a verb, like \"Shows free disk space.\" For a question: the answer in 1-3 sentences. With no commands: why.")
     var explanation: String?
 
     var script: String { commands.isEmpty ? "" : "set -e\n" + commands.joined(separator: "\n") }

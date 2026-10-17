@@ -189,7 +189,8 @@ import Testing
     @Test func namesWhatAPlanChanges() {
         let exists: (String) -> Bool = { $0 == "notes.txt" }
         #expect(Safety.risks(in: "ls -la", fileExists: exists).isEmpty)
-        #expect(Safety.risks(in: "find . -name '*.tmp' -delete", fileExists: exists) == ["deletes files under ."])
+        #expect(Safety.risks(in: "find . -name '*.tmp' -delete", fileExists: exists) == ["deletes matching files in this folder"])
+        #expect(Safety.risks(in: "find logs -name '*.tmp' -delete", fileExists: exists) == ["deletes matching files under logs"])
         #expect(Safety.risks(in: "mkdir -p images && mv *.png images/ && rm -rf images", fileExists: exists) == ["moves *.png", "deletes images"])
         #expect(Safety.risks(in: "rm -rf ~/photos", fileExists: exists) == ["deletes ~/photos"])
         #expect(Safety.risks(in: "rm a b c d e", fileExists: exists) == ["deletes a, b and 3 more"])
