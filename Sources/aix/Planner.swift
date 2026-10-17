@@ -46,7 +46,7 @@ final class Planner {
     func plan(_ prompt: String) async throws -> Plan {
         var plan: Plan
         do {
-            plan = try await respond(prompt, GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 300))
+            plan = try await respond(prompt, Self.greedy)
         } catch where Self.isRetryable(error) {
             debug("first attempt failed: \(error)")
             // Greedy decoding occasionally loops or breaks the output format; a little randomness fixes it.
@@ -60,6 +60,13 @@ final class Planner {
         plan.commands = plan.commands.map(Prompt.clean).filter { !$0.isEmpty }
         return plan
     }
+
+    // Xcode 27 renamed `sampling:` to `samplingMode:`; support building with either.
+    #if compiler(>=6.4)
+    private static let greedy = GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 300)
+    #else
+    private static let greedy = GenerationOptions(sampling: .greedy, maximumResponseTokens: 300)
+    #endif
 
     private func respond(_ prompt: String, _ options: GenerationOptions) async throws -> Plan {
         try await session.respond(to: prompt, generating: Plan.self, options: options).content
