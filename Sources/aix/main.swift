@@ -2,7 +2,7 @@ import AixCore
 import Foundation
 import FoundationModels
 
-let version = "0.3.1"
+let version = "0.3.2"
 let maxRepairs = 2  // automatic retries when a plan has syntax errors or missing programs
 
 func fail(_ message: String, code: Int32 = 1) -> Never {
@@ -19,15 +19,6 @@ func describe(_ error: Error) -> String {
     }
 }
 
-/// One blank line separates blocks; none trails the output, so the shell prompt keeps its own spacing.
-func show(_ plan: Plan) {
-    guard plan.explanation?.isEmpty == false || !plan.commands.isEmpty else {
-        print("\n  aix couldn't turn that into a command. Try rewording it.")
-        return
-    }
-    for line in Terminal.planLines(explanation: plan.explanation, commands: plan.commands) { print(line) }
-}
-
 /// With shell integration, hands a command back to the shell: "edit" puts it on the prompt
 /// line, "ran" adds it to history.
 func handOff(_ mode: String, _ commands: [String]) {
@@ -35,11 +26,14 @@ func handOff(_ mode: String, _ commands: [String]) {
     try? (mode + "\n" + commands.joined(separator: " && ")).write(toFile: path, atomically: true, encoding: .utf8)
 }
 
-/// Lines to show before running: why it's blocked, what it changes, and known problems.
-func warnings(blocked: String?, risks: [String], issues: [String]) -> [String] {
-    var lines = blocked.map { ["✗ Blocked: this \($0). aix won't run it."] } ?? []
-    if !risks.isEmpty { lines.append("⚠ This " + risks.joined(separator: ", ") + ".") }
-    return lines + issues.map { "⚠ " + $0 }
+@MainActor
+func makePlanner(_ instructions: String) -> Planner {
+    debug(instructions)
+    do {
+        return try Planner(instructions: instructions)
+    } catch {
+        fail(describe(error))
+    }
 }
 
 /// Asks the model, showing the plan as it arrives, then lets it repair syntax errors or missing programs.
@@ -104,26 +98,20 @@ case .initShell:
     break
 }
 
-@MainActor
-func makePlanner(_ instructions: String) -> Planner {
-    debug(instructions)
-    do {
-        return try Planner(instructions: instructions)
-    } catch {
-        fail(describe(error))
-    }
-}
-
 if case .explain = opts.mode {
+    let planner = makePlanner(Prompt.explainInstructions)
+    let text: String
     do {
-        let planner = makePlanner(Prompt.explainInstructions)
-        let text = try await Spinner.run("Explaining") { try await planner.explain(message) }
-        print()
-        for line in text.split(separator: "\n") { print("  " + line) }
-        exit(0)
+        let live = Live("Explaining")
+        live.start()
+        defer { live.finish() }
+        text = try await planner.explain(message)
     } catch {
         fail(describe(error))
     }
+    print()
+    for line in text.split(separator: "\n") { print("  " + line) }
+    exit(0)
 }
 
 let shell = Environment.runnableShell(from: env["SHELL"])
@@ -142,7 +130,7 @@ while true {
         fail(describe(error))
     }
     let blocked = Safety.violation(in: plan.script, home: environment.home)
-    let notes = warnings(blocked: blocked, risks: Safety.risks(in: plan.script), issues: issues)
+    let notes = Terminal.warnings(blocked: blocked, risks: Safety.risks(in: plan.script), issues: issues)
 
     // Shell integration: the command goes to stdout for the prompt line, notes to stderr.
     if opts.print {
@@ -152,7 +140,7 @@ while true {
         exit(0)
     }
 
-    show(plan)
+    Terminal.show(plan)
     if plan.commands.isEmpty { exit(0) }  // an answer, or a refusal with its reason
     for note in notes { Terminal.err((blocked != nil && note == notes[0] ? Terminal.red(note) : Terminal.yellow(note)) + "\n") }
     if blocked != nil { exit(1) }

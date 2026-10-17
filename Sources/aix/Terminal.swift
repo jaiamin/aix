@@ -76,17 +76,6 @@ final class Live: @unchecked Sendable {
     }
 }
 
-enum Spinner {
-    /// "■ Label..." while `work` runs.
-    @MainActor
-    static func run<T>(_ label: String, _ work: () async throws -> T) async throws -> T {
-        let live = Live(label)
-        live.start()
-        defer { live.finish() }
-        return try await work()
-    }
-}
-
 /// AIX_DEBUG=1 prints the prompt and model errors.
 func debug(_ message: @autoclosure () -> String) {
     guard ProcessInfo.processInfo.environment["AIX_DEBUG"] != nil else { return }
@@ -108,6 +97,11 @@ enum Terminal {
     }
     static func dim(_ s: String) -> String { style(s, "2") }
 
+    static func bold(_ s: String) -> String { style(s, "1") }
+    static func red(_ s: String) -> String { style(s, "31") }
+    static func yellow(_ s: String) -> String { style(s, "33") }
+    static func cyan(_ s: String) -> String { style(s, "36") }
+
     /// The plan as printed: a blank line, the explanation, a blank line, then the commands.
     /// Shared by the live view and the final output so they look identical.
     static func planLines(explanation: String?, commands: [String]) -> [String] {
@@ -124,10 +118,22 @@ enum Terminal {
         if !commands.isEmpty { lines.append("") }
         return lines
     }
-    static func bold(_ s: String) -> String { style(s, "1") }
-    static func red(_ s: String) -> String { style(s, "31") }
-    static func yellow(_ s: String) -> String { style(s, "33") }
-    static func cyan(_ s: String) -> String { style(s, "36") }
+
+    /// Prints a plan. One blank line separates blocks; none trails, so the shell prompt keeps its spacing.
+    static func show(_ plan: Plan) {
+        guard plan.explanation?.isEmpty == false || !plan.commands.isEmpty else {
+            print("\n  aix couldn't turn that into a command. Try rewording it.")
+            return
+        }
+        for line in planLines(explanation: plan.explanation, commands: plan.commands) { print(line) }
+    }
+
+    /// Lines to show before running: why it's blocked, what it changes, and known problems.
+    static func warnings(blocked: String?, risks: [String], issues: [String]) -> [String] {
+        var lines = blocked.map { ["✗ Blocked: this \($0). aix won't run it."] } ?? []
+        if !risks.isEmpty { lines.append("⚠ This " + risks.joined(separator: ", ") + ".") }
+        return lines + issues.map { "⚠ " + $0 }
+    }
 
     /// Restores the cursor on Ctrl-C.
     static func installInterruptHandler() {

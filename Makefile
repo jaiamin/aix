@@ -3,7 +3,7 @@ BINDIR := $(patsubst ~%,$(HOME)%,$(PREFIX))/bin
 VERSION := $(shell sed -n 's/^let version = "\(.*\)"/\1/p' Sources/aix/main.swift)
 
 build:
-	swift build -c release --disable-sandbox
+	swift build -c release
 
 test:
 	swift test
