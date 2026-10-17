@@ -1,74 +1,75 @@
 # aix
 
-Turn a plain-English request into shell commands using Apple Intelligence. It runs on your Mac and needs no API key.
+Say what you want in plain English, get the shell command, and run it with one key.
+aix uses Apple Intelligence's on-device model, so it's free, private and works offline. No API key.
 
 ```
 $ aix find the 5 largest files here
-■ Generating...
 
-  The command finds all regular files here and lists the five largest.
+  Lists the five largest files in this folder and its subfolders.
 
-  $ find . -type f -exec du -s {} + | sort -nr | head -5
+  $ find . -type f -not -path '*/.git/*' -exec du -k {} + | sort -rn | head -5
 
-Run? [y/N]
+Run? y/N · r refine · c copy
 ```
 
 ## Install
 
-Requires an Apple silicon Mac on macOS 26+ with Apple Intelligence turned on.
+```sh
+brew install jaiamin/aix/aix
+```
+
+Needs an Apple silicon Mac on macOS 26 or later, with Apple Intelligence turned on
+(System Settings → Apple Intelligence & Siri).
+
+## Use
 
 ```sh
-git clone https://github.com/OWNER/aix && cd aix
-make install            # builds and copies to ~/.local/bin (PREFIX=/usr/local to change)
+aix show what changed since the last commit
+aix                        # asks for the request, so you never need quotes
+aix -n kill whatever is on port 3000   # just show the command
 ```
 
-## Usage
+At the prompt, press one key:
 
-```
-aix [options] <request...>
-aix [options] -p "<request>"
+| Key | Does |
+|---|---|
+| `y` | run it |
+| `r` | refine it ("only python files", "include hidden ones") |
+| `c` | copy it to the clipboard |
+| anything else | cancel |
 
-  -y, --yes          run without asking
-  -n, --dry-run      show the commands, don't run them
-  -m, --model NAME   auto | local | cloud   (default: $AIX_MODEL or auto)
-```
+If a command fails, aix offers to fix it using the error message.
 
-**Quoting tip:** zsh treats `?` and `*` as globs before aix sees them, so `aix what's my ip?` breaks. Either quote the request (`aix -p "what's my ip?"`) or add `alias aix='noglob aix'` to `~/.zshrc`. The alias handles `?` and `*`, but apostrophes still need quotes.
+Options: `-n` show only, `-y` run without asking, `-h` help, `-v` version.
 
-## How it works
+**Tip:** zsh treats `?` and `*` specially, so `aix what's my ip?` breaks. Run `aix` on its own and type the request, or add `alias aix='noglob aix'` to `~/.zshrc`.
 
-1. **Context.** The instructions include your macOS version, shell, current/parent/home folders and the current folder's listing. They also include eight worked macOS examples, because a small model copies examples far more reliably than it follows rules.
-2. **Structured output.** The model fills a `@Generable` `Plan { commands, explanation }`. It writes the commands *first*. When the explanation came first, the on-device model talked itself into refusing doable requests.
-3. **Pre-flight checks.** Every plan goes through `$SHELL -n` (syntax) and `command -v` (each program exists). If a check fails, the errors go back to the model, up to 2 automatic repairs.
-4. **Deny list.** `sudo`, recursive deletes of `/`, `~` or system folders, `dd` to disks, `curl | sh` and similar patterns are blocked outright.
-5. **Confirm, then run.** The commands run as one `set -e` script in your shell, so `cd` carries over. If they fail, aix offers to send the error output back to the model for a fix (up to 2 times).
+## What to expect
 
-The deny list catches accidents, not attackers: `python -c`, `find -delete` on an odd path and base64 tricks get past it. The `[y/N]` prompt is the real safety gate, so read the plan before you press `y`.
+The on-device model is small (about 3B parameters). It handles everyday one-liners well: finding files, searching text, git, archives, images, and system and network info. It sometimes gets longer pipelines wrong, so **read the command before you press `y`**.
 
-## Models
+## Safety
 
-| `-m` | Model | Speed | Notes |
-|---|---|---|---|
-| `local` | On-device `SystemLanguageModel` (AFM 3 Core, ~3B) | ~1.2–3 s | Offline, private, no quota. Your Mac determines the variant (`core3` or `coreAdvanced3`); apps can't choose it. |
-| `cloud` | `PrivateCloudComputeLanguageModel` | — | Larger model with reasoning and a 32K context. **Requires Apple's managed entitlement `com.apple.developer.private-cloud-compute`.** Without it, `isAvailable` still returns `true`, but every request fails with `ModelManagerError 1046`. |
-| `auto` | cloud, then local | | Falls back to on-device on any cloud error. Today it always ends up on-device. |
+- Nothing runs until you press `y` (or pass `-y`).
+- aix tells you what a command changes: "⚠ This deletes logs", "moves notes.txt", "overwrites config.json", "pushes to the remote".
+- It refuses obvious disasters: `sudo`, deleting your home or system folders, erasing disks, `curl … | sh`, and reading and overwriting the same file.
+- This is a safety net, not a sandbox.
 
-## Distributing
+## Privacy
 
-| Route | Effort | What users do |
-|---|---|---|
-| **Homebrew tap** (recommended) | Create a `homebrew-aix` repo containing [`packaging/homebrew/aix.rb`](packaging/homebrew/aix.rb), then fill in the sha256 for each release tag. | `brew install OWNER/aix/aix` |
-| From source | Nothing | `git clone … && make install` |
-| Release binary | `make dist`, then sign with a Developer ID, notarize (`xcrun notarytool submit`) and upload to GitHub Releases | download and put it on `PATH` |
+The model runs on your Mac. It sees your request, the current folder's file names (two levels deep), your macOS and shell versions, the git branch, and which common tools are installed. Nothing is sent anywhere.
 
-Without notarization, Gatekeeper blocks a downloaded binary. Homebrew builds the formula from source, which sidesteps this. It does require the macOS 26+ Command Line Tools on the user's Mac.
-
-To ship with the **cloud** model, request the PCC managed entitlement from Apple. You then have to ship aix code-signed with a provisioning profile, which in practice means a small `.app` bundle with the CLI symlinked onto `PATH`. This path is untested here.
-
-## Development
+## Build from source
 
 ```sh
-make test      # unit tests for parsing, safety and prompt building (no model needed)
-make build
-.build/release/aix -n "your request"
+git clone https://github.com/jaiamin/aix && cd aix
+make test
+make install      # to ~/.local/bin; PREFIX=/usr/local to change
 ```
+
+The prompt lives in `Sources/AixCore/Prompt.swift`, and the worked examples in `Sources/AixCore/Examples.swift`. Each request gets the 10 most related examples. Set `AIX_DEBUG=1` to print the prompt.
+
+## License
+
+MIT

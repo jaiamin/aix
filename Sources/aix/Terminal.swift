@@ -49,6 +49,12 @@ enum Spinner {
     }
 }
 
+/// Prints to stderr when AIX_DEBUG is set (prompt, model errors).
+func debug(_ message: @autoclosure () -> String) {
+    guard ProcessInfo.processInfo.environment["AIX_DEBUG"] != nil else { return }
+    Terminal.err(Terminal.dim("[debug] " + message()) + "\n")
+}
+
 enum Terminal {
     static let isColor = isatty(STDOUT_FILENO) != 0 && ProcessInfo.processInfo.environment["NO_COLOR"] == nil
 
@@ -76,5 +82,43 @@ enum Terminal {
             reset.withCString { _ = write(STDERR_FILENO, $0, strlen($0)) }
             _exit(130)
         }
+    }
+
+    /// Reads a line of text after `prompt`. Nil on end of input.
+    static func ask(_ prompt: String) -> String? {
+        err(prompt)
+        return readLine()?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Asks a question answered by one keypress, no Enter. Returns the key if it is one of
+    /// `keys` (lowercased), otherwise "n".
+    static func choose(_ question: String, hint: String, keys: String) -> Character {
+        err("\(question) \(dim(hint)) ")
+        let byte = readKey()
+        if byte == 3 {  // Ctrl-C; signals are off while reading the key
+            err("\n")
+            exit(130)
+        }
+        let key = byte.map { Character(UnicodeScalar($0)).lowercased().first! } ?? "n"
+        let choice = keys.contains(key) ? key : "n"
+        err("\(choice)\n")
+        return choice
+    }
+
+    /// Reads one byte from the terminal without waiting for Enter or echoing it.
+    private static func readKey() -> UInt8? {
+        var original = termios()
+        guard tcgetattr(STDIN_FILENO, &original) == 0 else { return readLine()?.utf8.first }
+        var raw = original
+        raw.c_lflag &= ~tcflag_t(ICANON | ECHO | ISIG)
+        withUnsafeMutableBytes(of: &raw.c_cc) { cc in
+            cc[Int(VMIN)] = 1
+            cc[Int(VTIME)] = 0
+        }
+        // TCSAFLUSH drops keys typed while generating, so an early "y" can't approve an unseen plan.
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw)
+        defer { tcsetattr(STDIN_FILENO, TCSANOW, &original) }
+        var byte: UInt8 = 0
+        return read(STDIN_FILENO, &byte, 1) == 1 ? byte : nil
     }
 }

@@ -11,7 +11,74 @@ public enum Safety {
         for words in Shell.commands(in: command) {
             if let reason = check(words, home: home) { return reason }
         }
+        if let file = redirects(in: command).first(where: { $0.readFirst }) {
+            return "reads and overwrites \(file.target) at the same time, which empties it"
+        }
         return nil
+    }
+
+    /// Plain-language notes on what a command changes, shown before the user confirms.
+    public static func risks(in command: String, fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> [String] {
+        var notes: [String] = []
+        func add(_ note: String) { if !notes.contains(note) { notes.append(note) } }
+        for words in Shell.commands(in: command) {
+            let program = (words[0] as NSString).lastPathComponent
+            let args = words.dropFirst()
+            let operands = args.filter { !$0.hasPrefix("-") }
+            switch program {
+            case "mv": add("moves " + names(operands.dropLast(), or: "files"))
+            case "rm", "rmdir", "shred", "unlink": add("deletes " + names(operands, or: "files"))
+            case "find" where args.contains("-delete") || args.contains("rm"):
+                add("deletes files under " + names(args.prefix { !$0.hasPrefix("-") }, or: "."))
+            case "sed" where args.contains { $0.hasPrefix("-i") }: add("edits files in place")
+            case "kill", "killall", "pkill": add("stops processes")
+            case "xargs" where args.contains { ["kill", "rm", "mv"].contains($0) }:
+                add(args.contains("kill") ? "stops processes" : args.contains("rm") ? "deletes files" : "moves files")
+            case "git" where args.first == "reset" && args.contains("--hard"),
+                 "git" where args.first == "clean",
+                 "git" where args.first == "restore",
+                 "git" where args.first == "checkout" && args.contains("--"):
+                add("discards git changes")
+            case "git" where args.first == "push": add("pushes to the remote")
+            case "brew" where ["install", "uninstall", "upgrade", "remove"].contains(args.first ?? ""):
+                add("changes installed software")
+            default: break
+            }
+        }
+        for r in redirects(in: command) where fileExists(r.target) {
+            add("overwrites \(r.target)")
+        }
+        return notes
+    }
+
+    /// "a, b and 2 more", or `fallback` when there are none.
+    static func names<C: Collection<String>>(_ items: C, or fallback: String) -> String {
+        let list = Array(items)
+        switch list.count {
+        case 0: return fallback
+        case 1...3: return list.joined(separator: ", ")
+        default: return list.prefix(2).joined(separator: ", ") + " and \(list.count - 2) more"
+        }
+    }
+
+    /// `> file` targets (not `>>`, `2>` or `&>`), and whether the same file is read earlier in that step.
+    static func redirects(in command: String) -> [(target: String, readFirst: Bool)] {
+        var found: [(String, Bool)] = []
+        let steps = command.replacingOccurrences(of: "&&", with: ";").replacingOccurrences(of: "||", with: ";")
+            .split(whereSeparator: { $0 == ";" || $0 == "\n" })
+        for step in steps {
+            let step = String(step)
+            var searchFrom = step.startIndex
+            while let m = step.range(of: #"(?<![>&0-9])>(?![>&])\s*[^\s>|&;]+"#, options: .regularExpression, range: searchFrom..<step.endIndex) {
+                let target = step[m].dropFirst().trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
+                searchFrom = m.upperBound
+                guard !target.hasPrefix("/dev/") else { continue }
+                let before = step[..<m.lowerBound].split(whereSeparator: { " |<\t".contains($0) })
+                    .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "'\"")) }
+                found.append((target, before.contains(target)))
+            }
+        }
+        return found
     }
 
     static let textRules: [(String, String)] = [

@@ -1,27 +1,27 @@
-# Template for a Homebrew tap (a GitHub repo named homebrew-aix, file Formula/aix.rb).
-# Replace OWNER and sha256 after tagging a release:
-#   curl -sL https://github.com/OWNER/aix/archive/refs/tags/v0.1.0.tar.gz | shasum -a 256
+# Formula for the jaiamin/homebrew-aix tap (Formula/aix.rb there).
+# On release: upload `make dist` output to the GitHub release, then update version and sha256.
 class Aix < Formula
-  desc "Turn plain-English requests into shell commands with Apple Intelligence"
-  homepage "https://github.com/OWNER/aix"
-  url "https://github.com/OWNER/aix/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "REPLACE_WITH_TARBALL_SHA256"
+  desc "Turn plain English into shell commands with Apple Intelligence"
+  homepage "https://github.com/jaiamin/aix"
+  url "https://github.com/jaiamin/aix/releases/download/v0.1.0/aix-0.1.0-arm64-macos.tar.gz"
+  sha256 "REPLACE_WITH_SHA256"
+  license "MIT"
 
   depends_on arch: :arm64
+  depends_on macos: :tahoe
 
   def install
-    system "swift", "build", "-c", "release", "--disable-sandbox"
-    bin.install ".build/release/aix"
+    bin.install "aix"
   end
 
   def caveats
     <<~EOS
-      aix needs macOS 26 or later on Apple silicon with Apple Intelligence turned on
-      (System Settings → Apple Intelligence & Siri).
+      aix uses Apple Intelligence. Turn it on in
+      System Settings → Apple Intelligence & Siri.
     EOS
   end
 
   test do
-    assert_match "aix", shell_output("#{bin}/aix --version")
+    assert_match version.to_s, shell_output("#{bin}/aix --version")
   end
 end
