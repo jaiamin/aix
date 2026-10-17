@@ -3,16 +3,15 @@ import FoundationModels
 
 @Generable
 struct Plan {
-    // Commands come first: written after the explanation, they were often talked out of doable
-    // requests. The cap stops the small model from appending extra steps nobody asked for.
+    // Commands come first (explanation-first made the model refuse doable requests), and are
+    // capped so it doesn't append steps nobody asked for.
     @Guide(description: "Shell commands to run in order, usually just one. No markdown. Empty only if the request should be refused.", .maximumCount(3))
     var commands: [String]
 
-    // Optional so a derailed output (see Prompt.clean) still yields its commands.
+    // Optional so derailed output (see Prompt.clean) still yields commands.
     @Guide(description: "One short sentence saying what the commands do, or why there are none.")
     var explanation: String?
 
-    /// The commands as one script; `set -e` stops at the first failure like `&&` would.
     var script: String { commands.isEmpty ? "" : "set -e\n" + commands.joined(separator: "\n") }
 }
 
@@ -20,7 +19,7 @@ struct PlannerError: Error, CustomStringConvertible {
     let description: String
 }
 
-/// One on-device model session, so refinements and fixes keep the conversation.
+/// One session, so refinements and fixes keep the conversation.
 @MainActor
 final class Planner {
     private let session: LanguageModelSession
@@ -49,7 +48,7 @@ final class Planner {
             plan = try await respond(prompt, Self.greedy)
         } catch where Self.isRetryable(error) {
             debug("first attempt failed: \(error)")
-            // Greedy decoding occasionally loops or breaks the output format; a little randomness fixes it.
+            // Greedy decoding sometimes loops or breaks the format; retry with some randomness.
             do {
                 plan = try await respond(prompt, GenerationOptions(temperature: 0.5, maximumResponseTokens: 300))
             } catch where Self.isRetryable(error) {

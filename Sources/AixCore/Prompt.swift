@@ -1,6 +1,6 @@
 import Foundation
 
-/// Facts about the user's machine that the model can't know on its own.
+/// What the model needs to know about the Mac.
 public struct Environment: Sendable {
     public var osVersion: String
     public var shell: String
@@ -20,10 +20,9 @@ public struct Environment: Sendable {
         self.tools = tools
     }
 
-    /// Optional tools worth telling the model about when they're installed.
     static let knownTools = ["git", "brew", "python3", "node", "docker", "ffmpeg", "magick", "jq", "rg", "fd", "gh", "tree", "wget", "yt-dlp", "pandoc"]
 
-    /// Shells that understand `-c`, `-n` and `set -e` the same way. Anything else (fish, nu…) runs zsh.
+    /// fish, nu etc. don't take POSIX syntax, so they get zsh.
     public static func runnableShell(from env: String?) -> String {
         guard let env, ["zsh", "bash", "sh", "ksh", "dash"].contains((env as NSString).lastPathComponent) else { return "/bin/zsh" }
         return env
@@ -39,15 +38,14 @@ public struct Environment: Sendable {
             shell: shell,
             cwd: cwd,
             home: fm.homeDirectoryForCurrentUser.path,
-            // In the home folder, stay at the top level: looking inside Desktop, Documents
-            // or Downloads makes macOS show privacy prompts.
+            // In ~, looking inside Desktop/Documents/Downloads triggers macOS privacy prompts.
             entries: tree(cwd, depth: cwd == fm.homeDirectoryForCurrentUser.path ? 1 : 2),
             gitBranch: git.status == 0 ? git.stdout.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
             tools: installed.stdout.split(separator: "\n").map(String.init)
         )
     }
 
-    /// Paths two levels deep ("docs/", "docs/readme.md"), so the model sees where files really are.
+    /// Relative paths, e.g. "docs/", "docs/readme.md".
     static func tree(_ root: String, depth maxDepth: Int, limit: Int = 300) -> [String] {
         let fm = FileManager.default
         let skip: Set<String> = [".git", "node_modules", ".build", ".venv", "venv", "__pycache__", "Pods", "DerivedData", "Library"]
@@ -107,7 +105,6 @@ public enum Prompt {
 
     static func words(_ text: String) -> Set<String> {
         Set(text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map { w -> String in
-            // Crude plural stripping: processes → process, libraries → library, files → file.
             if w.hasSuffix("sses") { return String(w.dropLast(2)) }
             if w.count > 4 && w.hasSuffix("ies") { return w.dropLast(3) + "y" }
             if w.count > 3 && w.hasSuffix("s") && !w.hasSuffix("ss") { return String(w.dropLast()) }
@@ -115,8 +112,7 @@ public enum Prompt {
         }.map { synonyms[$0] ?? $0 }.filter { !stopWords.contains($0) })
     }
 
-    /// The examples most related to the request (by shared words), plus one refusal. Fewer,
-    /// relevant examples distract a small model less than all of them, and keep the prompt short.
+    /// The examples sharing the most words with the request, plus the refusal.
     static func examples(for request: String, count: Int = 10) -> String {
         let wanted = words(request)
         let ranked = library.enumerated()
@@ -158,7 +154,7 @@ public enum Prompt {
         """
     }
 
-    /// Small models sometimes wrap a command in backticks or prefix it with a prompt sign.
+    /// Strips markdown, a "$ " prompt, and JSON residue like `']], "`.
     public static func clean(_ command: String) -> String {
         var c = command.trimmingCharacters(in: .whitespacesAndNewlines)
         if c.hasPrefix("```") {
@@ -166,8 +162,6 @@ public enum Prompt {
         }
         while c.hasPrefix("`") && c.hasSuffix("`") && c.count > 1 { c = String(c.dropFirst().dropLast()) }
         if c.hasPrefix("$ ") { c.removeFirst(2) }
-        // Residue like `']], "` from a derailed JSON array: drop trailing ] , " and spaces
-        // while there are more ] than [.
         func unbalanced(_ s: String) -> Bool { s.filter { $0 == "]" }.count > s.filter { $0 == "[" }.count }
         while unbalanced(c), let last = c.last, "]\", ".contains(last) { c.removeLast() }
         return c.trimmingCharacters(in: .whitespacesAndNewlines)

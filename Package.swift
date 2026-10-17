@@ -8,8 +8,7 @@ let package = Package(
         .executable(name: "aix", targets: ["aix"]),
     ],
     targets: [
-        // Pure logic (argument parsing, safety checks, prompt building) so it can be unit-tested
-        // without loading a model.
+        // Everything testable without the model.
         .target(name: "AixCore"),
         .executableTarget(name: "aix", dependencies: ["AixCore"]),
         .testTarget(name: "AixCoreTests", dependencies: ["AixCore"]),

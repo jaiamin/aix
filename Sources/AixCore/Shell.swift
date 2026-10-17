@@ -1,19 +1,14 @@
-/// A small, forgiving shell tokenizer. It is not a full parser: it only needs to find each simple
-/// command's words well enough to check which programs a plan runs and whether any is dangerous.
+/// A forgiving shell tokenizer: just enough to find each command's words for the safety checks.
 public enum Shell {
-    /// Reserved words that may precede a command (`if grep …`, `do wc …`).
     static let prefixKeywords: Set<String> = ["if", "then", "else", "elif", "while", "until", "do", "!", "{", "time", "exec", "command", "nohup"]
-    /// Reserved words that end a construct and run nothing themselves.
     static let closingKeywords: Set<String> = ["fi", "done", "esac", "}", "]]"]
-    /// Segments starting with these are headers whose words are not commands.
     static let headerKeywords: Set<String> = ["for", "case", "select", "function", "[["]
 
-    /// The program names a script runs, in order (builtins included, variables skipped).
     public static func programs(in script: String) -> [String] {
         commands(in: script).compactMap { $0.first }.filter { !$0.hasPrefix("$") }
     }
 
-    /// Each simple command's words with quotes removed, leading assignments and keywords dropped.
+    /// Each simple command's words, unquoted, without leading assignments and keywords.
     public static func commands(in script: String) -> [[String]] {
         segments(script).compactMap { seg in
             var words = seg

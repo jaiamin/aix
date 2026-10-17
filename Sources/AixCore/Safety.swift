@@ -1,9 +1,9 @@
 import Foundation
 
-/// A last-resort deny list. It catches the obvious catastrophes a small model can produce; it is
-/// NOT a sandbox and is easy to get around on purpose. The confirmation prompt is the real gate.
+/// Catches obvious disasters and names what a command changes. Not a sandbox:
+/// the confirmation prompt is the real gate.
 public enum Safety {
-    /// Returns why `command` must not run, or nil if nothing obviously catastrophic was found.
+    /// Why `command` must not run, or nil.
     public static func violation(in command: String, home: String) -> String? {
         for (pattern, reason) in textRules where command.range(of: pattern, options: .regularExpression) != nil {
             return reason
@@ -17,7 +17,7 @@ public enum Safety {
         return nil
     }
 
-    /// Plain-language notes on what a command changes, shown before the user confirms.
+    /// What a command changes, e.g. "deletes logs", shown before confirming.
     public static func risks(in command: String, fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> [String] {
         var notes: [String] = []
         func add(_ note: String) { if !notes.contains(note) { notes.append(note) } }
@@ -51,7 +51,6 @@ public enum Safety {
         return notes
     }
 
-    /// "a, b and 2 more", or `fallback` when there are none.
     static func names<C: Collection<String>>(_ items: C, or fallback: String) -> String {
         let list = Array(items)
         switch list.count {
@@ -125,7 +124,6 @@ public enum Safety {
         return nil
     }
 
-    /// Paths whose wholesale deletion or permission change would wreck the system or home folder.
     static func isCritical(_ raw: String, home: String, includeCwd: Bool) -> Bool {
         var p = raw
         for v in ["${HOME}", "$HOME"] where p.hasPrefix(v) { p = "~" + p.dropFirst(v.count) }

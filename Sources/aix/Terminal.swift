@@ -1,10 +1,9 @@
 import AixCore
 import Foundation
 
-/// A cycling ■ ● ▲ glyph with a highlight sweeping across the label, drawn on one line of stderr.
+/// "■ Generating..." with a highlight sweeping across the text.
 enum Spinner {
     static let interval = Duration.milliseconds(90)
-    // 256-color greys for the label: resting → fully lit.
     static let dimGrey = 244
     static let brightGrey = 255
 
@@ -49,7 +48,7 @@ enum Spinner {
     }
 }
 
-/// Prints to stderr when AIX_DEBUG is set (prompt, model errors).
+/// AIX_DEBUG=1 prints the prompt and model errors.
 func debug(_ message: @autoclosure () -> String) {
     guard ProcessInfo.processInfo.environment["AIX_DEBUG"] != nil else { return }
     Terminal.err(Terminal.dim("[debug] " + message()) + "\n")
@@ -71,11 +70,10 @@ enum Terminal {
     static func dim(_ s: String) -> String { style(s, "2") }
     static func bold(_ s: String) -> String { style(s, "1") }
     static func red(_ s: String) -> String { style(s, "31") }
-    static func green(_ s: String) -> String { style(s, "32") }
     static func yellow(_ s: String) -> String { style(s, "33") }
     static func cyan(_ s: String) -> String { style(s, "36") }
 
-    /// Restores the cursor if the user hits Ctrl-C while it is hidden.
+    /// Restores the cursor on Ctrl-C.
     static func installInterruptHandler() {
         signal(SIGINT) { _ in
             let reset = "\u{1b}[?25h\n"
@@ -84,14 +82,12 @@ enum Terminal {
         }
     }
 
-    /// Reads a line of text after `prompt`. Nil on end of input.
     static func ask(_ prompt: String) -> String? {
         err(prompt)
         return readLine()?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Asks a question answered by one keypress, no Enter. Returns the key if it is one of
-    /// `keys` (lowercased), otherwise "n".
+    /// One keypress, no Enter. Returns the key if it's in `keys`, otherwise "n".
     static func choose(_ question: String, hint: String, keys: String) -> Character {
         err("\(question) \(dim(hint)) ")
         let byte = readKey()
@@ -105,7 +101,6 @@ enum Terminal {
         return choice
     }
 
-    /// Reads one byte from the terminal without waiting for Enter or echoing it.
     private static func readKey() -> UInt8? {
         var original = termios()
         guard tcgetattr(STDIN_FILENO, &original) == 0 else { return readLine()?.utf8.first }

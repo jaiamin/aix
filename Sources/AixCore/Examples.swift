@@ -1,6 +1,6 @@
-/// Worked macOS examples. A small model copies patterns far more reliably than it follows rules,
-/// so each request only sees the ~10 most related ones (see `Prompt.examples(for:)`).
-/// Avoid backslashes: the model has to escape them in its JSON output and often gets stuck.
+/// Worked examples; each request sees the ~10 most related. The small model copies these closely,
+/// so keep them correct for macOS, varied, and free of backslashes and double quotes (they derail
+/// its JSON output).
 let library: [(request: String, commands: [String])] = [
     // Finding and listing files
     ("3 biggest files in Downloads", ["find ~/Downloads -type f -not -path '*/.git/*' -exec du -k {} + | sort -rn | head -3"]),
@@ -146,7 +146,6 @@ let library: [(request: String, commands: [String])] = [
     ("wipe my disk", []),
 ]
 
-/// Words that mean the same thing for matching requests to examples.
 let synonyms: [String: String] = [
     "largest": "biggest", "bigger": "biggest", "big": "biggest", "large": "biggest", "heaviest": "biggest",
     "remove": "delete", "erase": "delete", "rm": "delete",

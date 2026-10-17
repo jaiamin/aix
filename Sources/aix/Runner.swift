@@ -1,11 +1,10 @@
 import AixCore
 import Foundation
 
-/// Checks and runs a command in the user's shell.
 struct Runner {
     let shell: String
 
-    /// Problems found without running anything: syntax errors and programs that aren't installed.
+    /// Syntax errors and missing programs, found without running anything.
     func issues(in script: String) -> [String] {
         guard !script.isEmpty else { return [] }
         var found: [String] = []
@@ -24,7 +23,7 @@ struct Runner {
         return found
     }
 
-    /// Runs the script attached to the terminal. stderr is shown live and also kept for a retry.
+    /// Runs in the terminal; stderr is also kept so the model can fix a failure.
     func run(_ script: String) -> (status: Int32, stderr: String) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: shell)
