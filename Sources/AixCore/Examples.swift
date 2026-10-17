@@ -1,4 +1,4 @@
-/// Worked examples; each request sees the ~10 most related. The small model copies these closely,
+/// Worked examples; each request sees the 5 most related. The small model copies these closely,
 /// so keep them correct for macOS, varied, and free of backslashes and double quotes (they derail
 /// its JSON output).
 let library: [(request: String, commands: [String])] = [

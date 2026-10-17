@@ -62,8 +62,9 @@ public enum Prompt {
     }
 
     /// The examples sharing the most words with the request, plus the refusal. The user's own
-    /// past requests win ties, but only when they're related at all.
-    static func examples(for request: String, personal: [History.Entry] = [], count: Int = 10) -> String {
+    /// past requests win ties, but only when they're related at all. Five measured best: with
+    /// more, the small model blends unrelated examples together (3: 69%, 5: 80%, 7: 76%, 10: 67%).
+    static func examples(for request: String, personal: [History.Entry] = [], count: Int = 5) -> String {
         let wanted = words(request)
         let pool = personal.reversed().map { Example(request: $0.request, commands: $0.commands, personal: true) }
             + library.filter { !$0.commands.isEmpty }.map { Example(request: $0.request, commands: $0.commands) }
