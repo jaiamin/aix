@@ -2,7 +2,7 @@ import AixCore
 import Foundation
 import FoundationModels
 
-let version = "0.2.0"
+let version = "0.2.1"
 let maxRepairs = 2  // automatic retries when a plan has syntax errors or missing programs
 
 func fail(_ message: String, code: Int32 = 1) -> Never {
@@ -38,16 +38,24 @@ func show(_ plan: Plan) {
     print()
 }
 
-func copyToClipboard(_ text: String) -> Bool {
-    let p = Process()
-    p.executableURL = URL(fileURLWithPath: "/usr/bin/pbcopy")
-    let pipe = Pipe()
-    p.standardInput = pipe
-    guard (try? p.run()) != nil else { return false }
-    pipe.fileHandleForWriting.write(Data(text.utf8))
-    try? pipe.fileHandleForWriting.close()
-    p.waitUntilExit()
-    return p.terminationStatus == 0
+/// Lines to show before running: why it's blocked, what it changes, and known problems.
+func warnings(blocked: String?, risks: [String], issues: [String]) -> [String] {
+    var lines = blocked.map { ["✗ Blocked: this \($0). aix won't run it."] } ?? []
+    if !risks.isEmpty { lines.append("⚠ This " + risks.joined(separator: ", ") + ".") }
+    return lines + issues.map { "⚠ " + $0 }
+}
+
+/// Asks the model, then lets it repair syntax errors or missing programs.
+@MainActor
+func generate(_ message: String, label: String, planner: Planner, runner: Runner) async throws -> (plan: Plan, issues: [String]) {
+    var plan = try await Spinner.run(label) { try await planner.plan(message) }
+    var issues = runner.issues(in: plan.script)
+    for _ in 0..<maxRepairs where !issues.isEmpty {
+        let repair = Prompt.repair(issues: issues)
+        plan = try await Spinner.run("Fixing") { try await planner.plan(repair) }
+        issues = runner.issues(in: plan.script)
+    }
+    return (plan, issues)
 }
 
 Terminal.installInterruptHandler()
@@ -94,28 +102,19 @@ case .initShell:
     break
 }
 
-let shell = Environment.runnableShell(from: env["SHELL"])
-let environment = Environment.current(shell: shell)
-let runner = Runner(shell: shell)
-let history = History.standard(env: env)
-
-let instructions: String
-if case .explain = opts.mode {
-    instructions = Prompt.explainInstructions
-} else {
-    instructions = Prompt.instructions(for: environment, request: request, personal: history.load())
-}
-debug(instructions)
-
-let planner: Planner
-do {
-    planner = try Planner(instructions: instructions)
-} catch {
-    fail(describe(error))
+@MainActor
+func makePlanner(_ instructions: String) -> Planner {
+    debug(instructions)
+    do {
+        return try Planner(instructions: instructions)
+    } catch {
+        fail(describe(error))
+    }
 }
 
 if case .explain = opts.mode {
     do {
+        let planner = makePlanner(Prompt.explainInstructions)
         let text = try await Spinner.run("Explaining") { try await planner.explain(message) }
         print()
         for line in text.split(separator: "\n") { print("  " + line) }
@@ -125,36 +124,27 @@ if case .explain = opts.mode {
     }
 }
 
+let shell = Environment.runnableShell(from: env["SHELL"])
+let environment = Environment.current(shell: shell)
+let runner = Runner(shell: shell)
+let history = History.standard(env: env)
+let planner = makePlanner(Prompt.instructions(for: environment, request: request, personal: history.load()))
+
 var label = opts.mode == .fix ? "Fixing" : "Generating"
 
 while true {
-    var plan: Plan
-    var issues: [String] = []
+    let plan: Plan, issues: [String]
     do {
-        let first = message
-        plan = try await Spinner.run(label) { try await planner.plan(first) }
-        issues = runner.issues(in: plan.script)
-        var repairs = 0
-        while !issues.isEmpty && repairs < maxRepairs {
-            repairs += 1
-            let repair = Prompt.repair(issues: issues)
-            plan = try await Spinner.run("Fixing") { try await planner.plan(repair) }
-            issues = runner.issues(in: plan.script)
-        }
+        (plan, issues) = try await generate(message, label: label, planner: planner, runner: runner)
     } catch {
         fail(describe(error))
     }
-
     let blocked = Safety.violation(in: plan.script, home: environment.home)
-    let risks = Safety.risks(in: plan.script)
+    let notes = warnings(blocked: blocked, risks: Safety.risks(in: plan.script), issues: issues)
 
     // Shell integration: the command goes to stdout for the prompt line, notes to stderr.
     if opts.print {
-        var notes = [plan.explanation ?? ""]
-        if let blocked { notes = ["✗ Blocked: this \(blocked)."] }
-        if !risks.isEmpty { notes.append("⚠ This " + risks.joined(separator: ", ") + ".") }
-        notes += issues.map { "⚠ " + $0 }
-        Terminal.err(notes.filter { !$0.isEmpty }.joined(separator: "\n"))
+        Terminal.err(([plan.explanation ?? ""] + notes).filter { !$0.isEmpty }.joined(separator: "\n"))
         guard blocked == nil, !plan.commands.isEmpty else { exit(1) }
         print(plan.commands.joined(separator: " && "))
         exit(0)
@@ -162,13 +152,8 @@ while true {
 
     show(plan)
     if plan.commands.isEmpty { exit(0) }  // an answer, or a refusal with its reason
-
-    if let blocked {
-        Terminal.err(Terminal.red("✗ Blocked: this \(blocked). aix won't run it.") + "\n")
-        exit(1)
-    }
-    for issue in issues { Terminal.err(Terminal.yellow("⚠ \(issue)") + "\n") }
-    if !risks.isEmpty { Terminal.err(Terminal.yellow("⚠ This " + risks.joined(separator: ", ") + ".") + "\n") }
+    for note in notes { Terminal.err((blocked != nil && note == notes[0] ? Terminal.red(note) : Terminal.yellow(note)) + "\n") }
+    if blocked != nil { exit(1) }
     if opts.dryRun { exit(0) }
 
     // -y skips the question, but never for a plan that still has known problems.
@@ -183,7 +168,7 @@ while true {
             label = "Refining"
             continue
         case "c":
-            let copied = copyToClipboard(plan.commands.joined(separator: "\n"))
+            let copied = capture(["/usr/bin/pbcopy"], input: plan.commands.joined(separator: "\n")).status == 0
             Terminal.err(Terminal.dim(copied ? "Copied to clipboard." : "Couldn't copy.") + "\n")
             exit(copied ? 0 : 1)
         default:
