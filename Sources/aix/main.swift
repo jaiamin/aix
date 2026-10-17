@@ -2,7 +2,7 @@ import AixCore
 import Foundation
 import FoundationModels
 
-let version = "0.2.2"
+let version = "0.3.0"
 let maxRepairs = 2  // automatic retries when a plan has syntax errors or missing programs
 
 func fail(_ message: String, code: Int32 = 1) -> Never {
@@ -21,21 +21,18 @@ func describe(_ error: Error) -> String {
 
 /// One blank line separates blocks; none trails the output, so the shell prompt keeps its own spacing.
 func show(_ plan: Plan) {
-    print()
-    if let explanation = plan.explanation, !explanation.isEmpty {
-        print("  " + explanation)
-        guard !plan.commands.isEmpty else { return }
-        print()
-    } else if plan.commands.isEmpty {
-        print("  aix couldn't turn that into a command. Try rewording it.")
+    guard plan.explanation?.isEmpty == false || !plan.commands.isEmpty else {
+        print("\n  aix couldn't turn that into a command. Try rewording it.")
         return
     }
-    for command in plan.commands {
-        let lines = command.split(separator: "\n", omittingEmptySubsequences: false)
-        print("  " + Terminal.cyan("$") + " " + Terminal.bold(String(lines[0])))
-        for line in lines.dropFirst() { print("    " + Terminal.bold(String(line))) }
-    }
-    print()
+    for line in Terminal.planLines(explanation: plan.explanation, commands: plan.commands) { print(line) }
+}
+
+/// With shell integration, hands a command back to the shell: "edit" puts it on the prompt
+/// line, "ran" adds it to history.
+func handOff(_ mode: String, _ commands: [String]) {
+    guard let path = ProcessInfo.processInfo.environment["AIX_HANDOFF"] else { return }
+    try? (mode + "\n" + commands.joined(separator: " && ")).write(toFile: path, atomically: true, encoding: .utf8)
 }
 
 /// Lines to show before running: why it's blocked, what it changes, and known problems.
@@ -45,14 +42,19 @@ func warnings(blocked: String?, risks: [String], issues: [String]) -> [String] {
     return lines + issues.map { "⚠ " + $0 }
 }
 
-/// Asks the model, then lets it repair syntax errors or missing programs.
+/// Asks the model, showing the plan as it arrives, then lets it repair syntax errors or missing programs.
 @MainActor
 func generate(_ message: String, label: String, planner: Planner, runner: Runner) async throws -> (plan: Plan, issues: [String]) {
-    var plan = try await Spinner.run(label) { try await planner.plan(message) }
+    func attempt(_ prompt: String, _ label: String) async throws -> Plan {
+        let live = Live(label)
+        live.start()
+        defer { live.finish() }
+        return try await planner.plan(prompt, live: live)
+    }
+    var plan = try await attempt(message, label)
     var issues = runner.issues(in: plan.script)
     for _ in 0..<maxRepairs where !issues.isEmpty {
-        let repair = Prompt.repair(issues: issues)
-        plan = try await Spinner.run("Fixing") { try await planner.plan(repair) }
+        plan = try await attempt(Prompt.repair(issues: issues), "Fixing")
         issues = runner.issues(in: plan.script)
     }
     return (plan, issues)
@@ -159,9 +161,14 @@ while true {
     // -y skips the question, but never for a plan that still has known problems.
     if !opts.yes || !issues.isEmpty {
         guard interactive else { fail("no terminal to confirm on; pass -y to run without asking") }
-        switch Terminal.choose("Run?", hint: "y/N · r refine · c copy", keys: "yrc") {
+        let integrated = env["AIX_HANDOFF"] != nil
+        let hint = integrated ? "y/N · e edit · r refine · c copy" : "y/N · r refine · c copy"
+        switch Terminal.choose("Run?", hint: hint, keys: integrated ? "yerc" : "yrc") {
         case "y":
             break
+        case "e":
+            handOff("edit", plan.commands)
+            exit(0)
         case "r":
             guard let change = Terminal.ask(Terminal.cyan("Refine › ")), !change.isEmpty else { exit(0) }
             message = Prompt.refine(change)
@@ -178,8 +185,16 @@ while true {
     }
 
     let result = runner.run(plan.script)
+    handOff("ran", plan.commands)
     if result.status == 0 {
         if !request.isEmpty { history.record(.init(request: request, commands: plan.commands)) }
+        // Once, for people without shell integration, so they find Ctrl-G, e and aix fix.
+        let tip = history.url.deletingLastPathComponent().appendingPathComponent("tip-shown")
+        if interactive, env["AIX_HANDOFF"] == nil, !FileManager.default.fileExists(atPath: tip.path) {
+            Terminal.err(Terminal.dim("\nTip: add  eval \"$(aix init zsh)\"  to ~/.zshrc for Ctrl-G, editing and aix fix.") + "\n")
+            try? FileManager.default.createDirectory(at: tip.deletingLastPathComponent(), withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: tip.path, contents: nil)
+        }
         exit(0)
     }
 

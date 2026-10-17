@@ -35,6 +35,7 @@ public struct Options: Equatable, Sendable {
       -v, --version         show the version
 
     At the prompt: y runs, r refines, c copies, any other key cancels.
+    With shell integration, e puts the command on your prompt to edit.
     """
 
     public static func parse(_ args: [String]) throws(OptionsError) -> Options {

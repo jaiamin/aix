@@ -51,12 +51,14 @@ final class Planner {
         session.prewarm()
     }
 
-    func plan(_ prompt: String) async throws -> Plan {
+    /// Streams the plan into `live` as it's generated.
+    func plan(_ prompt: String, live: Live) async throws -> Plan {
         var plan: Plan
         do {
-            plan = try await respond(prompt, Self.greedy)
+            plan = try await stream(prompt, into: live)
         } catch where Self.isRetryable(error) {
             debug("first attempt failed: \(error)")
+            live.reset()
             // Greedy decoding sometimes loops or breaks the format; retry with some randomness.
             do {
                 plan = try await respond(prompt, GenerationOptions(temperature: 0.5, maximumResponseTokens: 300))
@@ -82,6 +84,18 @@ final class Planner {
     #else
     private static let greedy = GenerationOptions(sampling: .greedy, maximumResponseTokens: 300)
     #endif
+
+    private func stream(_ prompt: String, into live: Live) async throws -> Plan {
+        var last: GeneratedContent?
+        for try await snapshot in session.streamResponse(to: prompt, generating: Plan.self, options: Self.greedy) {
+            let partial = snapshot.content
+            let commands = partial.kind == .explainConcept ? [] : partial.commands ?? []
+            live.show(Terminal.planLines(explanation: partial.explanation, commands: commands))
+            last = snapshot.rawContent
+        }
+        guard let last else { throw PlannerError(description: "The model returned nothing.") }
+        return try Plan(last)
+    }
 
     private func respond(_ prompt: String, _ options: GenerationOptions) async throws -> Plan {
         try await session.respond(to: prompt, generating: Plan.self, options: options).content

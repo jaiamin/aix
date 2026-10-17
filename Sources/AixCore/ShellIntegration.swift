@@ -1,5 +1,6 @@
-/// What `aix init zsh` prints: Ctrl-G turns the text on the prompt into a command,
-/// and the last command is passed to aix (only) for `aix fix`.
+/// What `aix init zsh` prints: Ctrl-G turns the text on the prompt into a command, `aix fix`
+/// gets the last command (without exporting it), and an `aix` function puts edited commands on
+/// the prompt line and the commands aix runs into shell history.
 public enum ShellIntegration {
     public static let zsh = #"""
     # aix shell integration: eval "$(aix init zsh)"
@@ -27,7 +28,15 @@ public enum ShellIntegration {
     }
     precmd_functions=(_aix_precmd ${precmd_functions[@]})
     aix() {
-      AIX_LAST_STATUS=$_aix_last_status AIX_LAST_COMMAND=$_aix_last_command command aix "$@"
+      local handoff=${TMPDIR:-/tmp}/aix-handoff.$$
+      AIX_HANDOFF=$handoff AIX_LAST_STATUS=$_aix_last_status AIX_LAST_COMMAND=$_aix_last_command command aix "$@"
+      local rc=$?
+      if [[ -s $handoff ]]; then
+        local lines=("${(@f)$(<$handoff)}")
+        if [[ $lines[1] == edit ]]; then print -z -- "${(F)lines[2,-1]}"; else print -s -- "${(F)lines[2,-1]}"; fi
+      fi
+      rm -f $handoff
+      return $rc
     }
     """#
 }
